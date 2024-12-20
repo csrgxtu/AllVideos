@@ -1,0 +1,4 @@
+# Requirements for the project
+
+# List your dependencies here
+playwright
