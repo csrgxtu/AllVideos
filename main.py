@@ -6,6 +6,8 @@ from socket import timeout
 import time
 from calendar import c
 from playwright.async_api import async_playwright
+from bs4 import BeautifulSoup
+from playwright._impl._errors import TimeoutError
 
 # Define the path for the data file
 DATA_FILE = 'extracted_data.json'
@@ -75,15 +77,18 @@ async def scrape_douyin(url):
             # 打开每个href并提取视频链接
             if data['href']:
                 await page.goto(data['href'])
-                await page.wait_for_selector('video', timeout=50000)  # 等待video元素出现
-                video_link = await page.evaluate('''() => {
-                    const videoElement = document.querySelector('video');
-                    const sourceElement = videoElement ? videoElement.querySelector('source') : null;
-                    return sourceElement ? sourceElement.src : null;
-                }''')
-                # 打印原始数据和视频链接
-                print({"text": data['text'], "href": data['href'], "video_link": video_link})
-
+                try:
+                    await page.wait_for_selector('video', timeout=30000)  # 等待video元素出现
+                    print('Video element found.')
+                    page_content = await page.content()  # 获取页面内容
+                    soup = BeautifulSoup(page_content, 'html.parser')  # 解析页面内容
+                    video_element = soup.find('video')  # 查找video元素
+                    source_element = video_element.find('source') if video_element else None  # 查找第一个source元素
+                    video_link = source_element['src'] if source_element else None  # 获取src链接
+                    # 打印原始数据和视频链接
+                    print({"text": data['text'], "href": data['href'], "video_link": video_link})
+                except TimeoutError:
+                    print(f"Timeout while waiting for video on {data['href']}")  # Log the timeout error
 
         await browser.close()
 
