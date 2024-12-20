@@ -36,11 +36,12 @@ async def scrape_douyin(url):
             await page.wait_for_selector('ul[data-e2e="scroll-list"]', timeout=30000)  # 等待页面加载成功，增加超时时间
 
             # 点击聚焦后才能成功滚动
-            await page.click('ul[data-e2e="scroll-list"]')
+            await page.mouse.move(100, 100)
+            await page.click('span:has-text("作品")')  # 点击内容为作品的span元素
 
             while True:
                 print('Scrolling down...')
-                await page.keyboard.press('PageDown')
+                await page.mouse.wheel(0, 500)  # 向下滚动500像素
                 await page.wait_for_timeout(1000)  # 等待页面加载更多视频
 
                 # 检查是否出现“暂时没有更多了”的文案
@@ -93,4 +94,5 @@ async def scrape_douyin(url):
         await browser.close()
 
 if __name__ == '__main__':
-    asyncio.run(scrape_douyin('https://www.douyin.com/user/MS4wLjABAAAApz_lA6T5B00ucLSe8Wlk1i-yOa6lXhkZ6gyRjavy7nI'))
+    asyncio.run(scrape_douyin('https://www.douyin.com/user/MS4wLjABAAAAIaPqhEag0d1HY4qNpo7ad0ffz1rF565v4dN84g05g4vEkjjyBBocLyRG56-yWCaE'))
+    # asyncio.run(scrape_douyin('https://www.douyin.com/user/MS4wLjABAAAApz_lA6T5B00ucLSe8Wlk1i-yOa6lXhkZ6gyRjavy7nI'))
