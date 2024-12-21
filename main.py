@@ -50,10 +50,11 @@ async def scrape_douyin(url):
                     print("Reached the end of the content.")
                     break  # 如果找到文本，停止滚动
 
-                # 提取 data-e2e="scroll-list" 下的所有 li 元素中的 p 和 a
+                # 提取 data-e2e="scroll-list" 下的所有 div[data-e2e="user-post-list"] 元素中的 p 和 a
                 data = await page.evaluate('''() => {
                     const items = [];
-                    const listItems = document.querySelectorAll('ul[data-e2e="scroll-list"] li');
+                    const userPostList = document.querySelector('div[data-e2e="user-post-list"]');
+                    const listItems = userPostList ? userPostList.querySelectorAll('ul[data-e2e="scroll-list"] li') : [];
                     listItems.forEach(item => {
                         const pElement = item.querySelector('p');
                         const aElement = item.querySelector('a');
@@ -86,6 +87,25 @@ async def scrape_douyin(url):
                     video_element = soup.find('video')  # 查找video元素
                     source_element = video_element.find('source') if video_element else None  # 查找第一个source元素
                     video_link = source_element['src'] if source_element else None  # 获取src链接
+
+                    if not video_link:
+                        # If no source element, listen for network requests
+                        media_video_links = []
+
+                        # Define a function to handle responses
+                        def handle_response(response):
+                            if 'media-video-hvc1' in response.url and response.request.resource_type == 'fetch':
+                                media_video_links.append(response.url)
+
+                        # Attach the response handler
+                        page.on('response', handle_response)
+
+                        # Wait for some time to ensure requests are captured
+                        await page.wait_for_timeout(5000)  # Adjust as necessary
+
+                        # Filter and get the first matching video link
+                        video_link = next((url for url in media_video_links if 'media-video-hvc1' in url and url.startswith('https://v3-dy-o.zjcdn.com')), None)  # 获取视频链接
+
                     # 打印原始数据和视频链接
                     print({"text": data['text'], "href": data['href'], "video_link": video_link})
                 except TimeoutError:
