@@ -82,6 +82,13 @@ async def scrape_douyin(url):
                 try:
                     await page.wait_for_selector('video', timeout=30000)  # 等待video元素出现
                     print('Video element found.')
+
+                    # Click the smart button
+                    await page.click('div.btn:has-text("智能")')  # Click the div with class 'btn' containing text '智能'
+
+                    # Click the clarity wrapper div
+                    await page.click('div.clarity-wrapper')  # Click the div with class 'clarity-wrapper'
+
                     page_content = await page.content()  # 获取页面内容
                     soup = BeautifulSoup(page_content, 'html.parser')  # 解析页面内容
                     video_element = soup.find('video')  # 查找video元素
@@ -109,6 +116,8 @@ async def scrape_douyin(url):
                     # 打印原始数据和视频链接
                     print({"text": data['text'], "href": data['href'], "video_link": video_link})
                 except TimeoutError:
+                    import traceback
+                    traceback.print_exc()
                     print(f"Timeout while waiting for video on {data['href']}")  # Log the timeout error
 
         await browser.close()
