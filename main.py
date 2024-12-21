@@ -14,6 +14,7 @@ DATA_FILE = 'extracted_data.json'
 
 async def scrape_douyin(url):
     extracted_data = []  # Initialize the list to store extracted data
+    seen_hrefs = set()  # Set to keep track of seen hrefs
 
     # Check if the data file exists
     if os.path.exists(DATA_FILE):
@@ -50,22 +51,22 @@ async def scrape_douyin(url):
                     print("Reached the end of the content.")
                     break  # 如果找到文本，停止滚动
 
-                # 提取 data-e2e="scroll-list" 下的所有 div[data-e2e="user-post-list"] 元素中的 p 和 a
-                data = await page.evaluate('''() => {
-                    const items = [];
-                    const userPostList = document.querySelector('div[data-e2e="user-post-list"]');
-                    const listItems = userPostList ? userPostList.querySelectorAll('ul[data-e2e="scroll-list"] li') : [];
-                    listItems.forEach(item => {
-                        const pElement = item.querySelector('p');
-                        const aElement = item.querySelector('a');
-                        items.push({
-                            text: pElement ? pElement.innerText : null,
-                            href: aElement ? aElement.href : null
-                        });
+            # 提取 data-e2e="scroll-list" 下的所有 div[data-e2e="user-post-list"] 元素中的 p 和 a
+            data = await page.evaluate('''() => {
+                const items = [];
+                const userPostList = document.querySelector('div[data-e2e="user-post-list"]');
+                const listItems = userPostList ? userPostList.querySelectorAll('ul[data-e2e="scroll-list"] li') : [];
+                listItems.forEach(item => {
+                    const pElement = item.querySelector('p');
+                    const aElement = item.querySelector('a');
+                    items.push({
+                        text: pElement ? pElement.innerText : null,
+                        href: aElement ? aElement.href : null
                     });
-                    return items;
-                }''')
-                extracted_data.extend(data)  # Add the extracted data to the list
+                });
+                return items;
+            }''')
+            extracted_data.extend(data)
 
             # Save extracted data to a file
             with open(DATA_FILE, 'w', encoding='utf-8') as f:
@@ -85,33 +86,35 @@ async def scrape_douyin(url):
 
                     # Click the smart button
                     await page.click('div.btn:has-text("智能")')  # Click the div with class 'btn' containing text '智能'
-
                     # Click the clarity wrapper div
                     await page.click('div.clarity-wrapper')  # Click the div with class 'clarity-wrapper'
 
-                    page_content = await page.content()  # 获取页面内容
-                    soup = BeautifulSoup(page_content, 'html.parser')  # 解析页面内容
-                    video_element = soup.find('video')  # 查找video元素
-                    source_element = video_element.find('source') if video_element else None  # 查找第一个source元素
-                    video_link = source_element['src'] if source_element else None  # 获取src链接
+                    # Listen for network requests
+                    media_video_links, fetch_video_links = [], []
 
-                    if not video_link:
-                        # If no source element, listen for network requests
-                        media_video_links = []
+                    # Define a function to handle responses
+                    def handle_media_response(response):
+                        if 'https://v3-web.douyinvod.com/' in response.url and response.request.resource_type == 'media':
+                            media_video_links.append(response.url)
+                    def handle_fetch_response(response):
+                        if ('https://v3-web.douyinvod.com/' in response.url or 'https://v3-web.douyinvod.com/' in response.url) and response.request.resource_type =='fetch':
+                            media_video_links.append(response.url)
 
-                        # Define a function to handle responses
-                        def handle_response(response):
-                            if 'media-video-hvc1' in response.url and response.request.resource_type == 'fetch':
-                                media_video_links.append(response.url)
+                    # Attach the response handler
+                    page.on('response', handle_media_response)
+                    page.on('response', handle_fetch_response)
 
-                        # Attach the response handler
-                        page.on('response', handle_response)
+                    # Wait for some time to ensure requests are captured
+                    await page.wait_for_timeout(5000)  # Adjust as necessary
 
-                        # Wait for some time to ensure requests are captured
-                        await page.wait_for_timeout(5000)  # Adjust as necessary
+                    # Filter and get the first matching video link
+                    video_link = next((url for url in media_video_links), None)  # 获取视频链接
 
-                        # Filter and get the first matching video link
-                        video_link = next((url for url in media_video_links if 'media-video-hvc1' in url and url.startswith('https://v3-dy-o.zjcdn.com')), None)  # 获取视频链接
+                    # If video_link is None, try to get it from the page source
+                    if video_link is None:
+                        print(f'无法获取1080P，直接从网页源码获取默认 {data["href"]} fetch情况：{fetch_video_links}')
+                        page_content = await page.content()  # 获取页面内容
+                        video_link = await extract_video_link_from_page(page_content)  # Call the new function to extract video link
 
                     # 打印原始数据和视频链接
                     print({"text": data['text'], "href": data['href'], "video_link": video_link})
@@ -119,8 +122,19 @@ async def scrape_douyin(url):
                     import traceback
                     traceback.print_exc()
                     print(f"Timeout while waiting for video on {data['href']}")  # Log the timeout error
+                    
+                    # If a timeout occurs, get the video link from the page source
+                    page_content = await page.content()  # 获取页面内容
+                    video_link = await extract_video_link_from_page(page_content)  # Call the function to extract video link
+                    print({"text": data['text'], "href": data['href'], "video_link": video_link})
 
         await browser.close()
+
+async def extract_video_link_from_page(page_content):
+    soup = BeautifulSoup(page_content, 'html.parser')  # 解析页面内容
+    video_element = soup.find('video')  # 查找video元素
+    source_element = video_element.find('source') if video_element else None  # 查找第一个source元素
+    return source_element['src'] if source_element else None  # 获取src链接
 
 if __name__ == '__main__':
     asyncio.run(scrape_douyin('https://www.douyin.com/user/MS4wLjABAAAAIaPqhEag0d1HY4qNpo7ad0ffz1rF565v4dN84g05g4vEkjjyBBocLyRG56-yWCaE'))
